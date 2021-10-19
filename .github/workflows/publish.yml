@@ -77,27 +77,43 @@ jobs:
           refreshenv
       - name: Initialize bot git config
         shell: bash
+        id: version_configure
         run: |
           source ../.ci/scripts/git_release.sh \
           "${{github.event_name}}" "${{github.event.release.tag_name}}" \
           "${{github.event.head_commit.message}}" \
           "${{github.event.inputs.versionName}}" "${{github.event.inputs.preReleaseSuffix}}"
-      - name: Build/release Electron app Win
-        if: matrix.os == 'windows-latest'
+          echo "::set-output name=new_tag_name::$(echo $version)"
+      - name: Build/release Electron app
         uses: samuelmeuli/action-electron-builder@v1
         with:
           github_token: ${{ secrets.github_token }}
+          release: false
+          args: --publish=never
           package_root: ./app
-          release: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          args: --publish=always
-      - name: Build/release Electron app Linux
-        if: matrix.os == 'ubuntu-latest'
-        uses: samuelmeuli/action-electron-builder@v1
+      - name: Backup built files
+        run: | 
+          mkdir ../../buildfiles
+          cp -r ./app/release/build ../../buildfiles
+        shell: bash
+      - name: Checkout code
+        uses: actions/checkout@v2
         with:
-          github_token: ${{ secrets.github_token }}
-          package_root: ./app
-          release: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          args: --publish=always
+          fetch-depth: 0
+          token: ${{ secrets.github_token }}
+      - name: Restore built files
+        run: |
+          mkdir -p ./app/release/build
+          cp -r ../../buildfiles ./app/release/build
+        shell: bash
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version_configure.outputs.new_tag_name }}
+          token: ${{ secrets.github_token }}
+          files: |
+            ./app/release/build/*
+            !./app/release/build/*unpacked
       - name: Archive production artifacts
         uses: actions/upload-artifact@v2
         with:
